@@ -1,58 +1,215 @@
 library(dplyr)
 library(gtsummary)
 library(pROC)
+library(rsample)
+library(caret)
 
 dados <- readRDS("dados_endometriose_limpos.rds")
 
+# Divisão treino/teste
+set.seed(100)
+divisao <- initial_split(
+  dados,
+  prop = 0.80,
+  strata = CAR_CAT
+)
+treino <- training(divisao)
+teste  <- testing(divisao)
 
-# ── Regressão Logística ──────────────────────
-# Transformando a variável X em 1 e 0
-dados <- dados %>%
-  mutate(CAR_CAT = ifelse(CAR_CAT == "Urgencia", 1, 0))
-
-# Treinando o modelo de regressão logística
-# Fora do modelo por serem a versão não agrupada/redundante de outra coluna:
-modelo <- glm(
-  CAR_CAT ~ IDADE + SEXO + RACA_COR + NUM_FILHOS +
-    mesmo_municipio + munResNome_Agrupado + Hospital_Agrupado +
-    ESPEC + COMPLEX + DIAG_PRINC,
-  data = dados,
-  family = binomial
+# Validação cruzada k-fold
+controle_cv <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
 )
 
-tidy_wald <- function(x, exponentiate = FALSE, conf.level = 0.95, ...) {
-  ic <- confint.default(x, level = conf.level)
-  if (exponentiate) ic <- exp(ic)
-  
-  dplyr::bind_cols(
-    broom::tidy(x, exponentiate = exponentiate, conf.int = FALSE),
-    dplyr::as_tibble(ic, .name_repair = "minimal") %>%
-      rlang::set_names(c("conf.low", "conf.high"))
-  )
-}
+# Treinando o modelo de regressão logística
+modelo <- train(
+  CAR_CAT ~ IDADE + SEXO + RACA_COR +
+    mesmo_municipio + munResNome_Agrupado +
+    Hospital_Agrupado + ESPEC + DIAG_PRINC,
+  data = treino,
+  method = "glm",
+  family = binomial,
+  metric = "ROC",
+  trControl = controle_cv
+)
 
-# Probabilidades previstas pelo modelo
-prob_previstas <- predict(modelo, type = "response")
+modelo
 
-# Curva ROC e AUC
-roc_modelo <- roc(dados$CAR_CAT, prob_previstas)
-auc(roc_modelo)
+# Probs previstas no teste
+prob_teste <- predict(
+  modelo,
+  newdata = teste,
+  type = "prob"
+)[, "Urgencia"]
 
-# IC 95% do AUC (opcional, mas fortalece o artigo)
-ci.auc(roc_modelo)
+# Classe prevista usando ponto de corte 0,5
+classe_teste <- ifelse(
+  prob_teste >= 0.50,
+  "Urgencia",
+  "Eletiva"
+)
+
+classe_teste <- factor(
+  classe_teste,
+  levels = c("Eletiva", "Urgencia")
+)
+
+# Matriz de confusão
+matriz <- confusionMatrix(
+  classe_teste,
+  teste$CAR_CAT,
+  positive = "Urgencia"
+)
+
+matriz
+
+# Métricas
+sensibilidade <- matriz$byClass["Sensitivity"]
+especificidade <- matriz$byClass["Specificity"]
+precisao <- matriz$byClass["Pos Pred Value"]
+f1 <- matriz$byClass["F1"]
+acuracia_balanceada <- matriz$byClass["Balanced Accuracy"]
+
+sensibilidade
+especificidade
+precisao
+f1
+acuracia_balanceada
+
+# ROC e AUC
+roc_teste <- roc(
+  teste$CAR_CAT,
+  prob_teste,
+  levels = c("Eletiva", "Urgencia"),
+  quiet = TRUE
+)
+
+auc_teste <- auc(roc_teste)
+auc_teste
+
+# IC95% da AUC
+ci_auc <- ci.auc(roc_teste)
+ci_auc
+
+# Curva ROC
+plot(
+  roc_teste,
+  main = "Curva ROC - Regressão Logística"
+)
+
+# Gráfico
+library(ggplot2)
+library(pROC)
+
+ggroc(roc_teste, linewidth = 1.2) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Curva ROC - Regressão Logística",
+    subtitle = paste0(
+      "AUC = ",
+      round(as.numeric(auc_teste), 3)
+    ),
+    x = "1 - Especificidade",
+    y = "Sensibilidade"
+  ) +
+  theme_minimal(base_size = 13)
+
+# Odds Ratios (OR) com IC95% e p-valor
+tabela_OR <- tbl_regression(
+  modelo$finalModel,
+  exponentiate = TRUE
+)
+
+tabela_OR
+
+# ============================================================
+# KNN - comparação com a regressão logística
+# ============================================================
+
+# KNN
+set.seed(100)
+
+modelo_knn <- train(
+  CAR_CAT ~ IDADE + SEXO + RACA_COR +
+    mesmo_municipio + munResNome_Agrupado +
+    Hospital_Agrupado + ESPEC + DIAG_PRINC,
+  data = treino,
+  method = "knn",
+  metric = "ROC",
+  trControl = controle_cv,
+  preProcess = c("center", "scale"),
+  tuneLength = 10
+)
+
+modelo_knn
 
 
-conjunto1 <- c("IDADE", "SEXO", "RACA_COR", "NUM_FILHOS")
-conjunto2 <- c("DIAG_PRINC", "ESPEC", "COMPLEX")
-conjunto3 <- c("mesmo_municipio", "munResNome_Agrupado")
-conjunto4 <- c("Hospital_Agrupado")
+# Probabilidades previstas no teste
+prob_knn <- predict(
+  modelo_knn,
+  newdata = teste,
+  type = "prob"
+)[, "Urgencia"]
 
-tabela1 <- tbl_regression(modelo, include = all_of(conjunto1), exponentiate = TRUE, tidy_fun = tidy_wald)
-tabela2 <- tbl_regression(modelo, include = all_of(conjunto2), exponentiate = TRUE, tidy_fun = tidy_wald)
-tabela3 <- tbl_regression(modelo, include = all_of(conjunto3), exponentiate = TRUE, tidy_fun = tidy_wald)
-tabela4 <- tbl_regression(modelo, include = all_of(conjunto4), exponentiate = TRUE, tidy_fun = tidy_wald)
 
-tabela1
-tabela2
-tabela3
-tabela4
+# Classe prevista com ponto de corte 0,50
+classe_knn <- ifelse(
+  prob_knn >= 0.50,
+  "Urgencia",
+  "Eletiva"
+)
+
+classe_knn <- factor(
+  classe_knn,
+  levels = c("Eletiva", "Urgencia")
+)
+
+
+# Matriz de confusão
+matriz_knn <- confusionMatrix(
+  classe_knn,
+  teste$CAR_CAT,
+  positive = "Urgencia"
+)
+
+matriz_knn
+
+
+# Métricas
+sensibilidade_knn <- matriz_knn$byClass["Sensitivity"]
+especificidade_knn <- matriz_knn$byClass["Specificity"]
+precisao_knn <- matriz_knn$byClass["Pos Pred Value"]
+f1_knn <- matriz_knn$byClass["F1"]
+acuracia_balanceada_knn <- matriz_knn$byClass["Balanced Accuracy"]
+
+sensibilidade_knn
+especificidade_knn
+precisao_knn
+f1_knn
+acuracia_balanceada_knn
+
+
+# ROC e AUC
+roc_knn <- roc(
+  teste$CAR_CAT,
+  prob_knn,
+  levels = c("Eletiva", "Urgencia"),
+  quiet = TRUE
+)
+
+auc_knn <- auc(roc_knn)
+auc_knn
+
+
+# IC95% da AUC
+ci_auc_knn <- ci.auc(roc_knn)
+ci_auc_knn
+
