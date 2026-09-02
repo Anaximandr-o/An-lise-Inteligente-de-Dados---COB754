@@ -266,30 +266,33 @@ ci_auc_knn
 library(randomForest)
 library(ggplot2)
 
+# Define "Urgencia" como a classe principal (nível 1)
+treino$CAR_CAT <- relevel(treino$CAR_CAT, ref = "Urgencia")
+
 form_rf <- CAR_CAT ~ IDADE + RACA_COR + NUM_FILHOS + SEXO + DIAG_PRINC +
   ESPEC + COMPLEX + mesmo_municipio + Hospital_Agrupado + munResNome_Agrupado
 
 # Ajustar manualmente mtry e ntree
 customRF <- list(type = "Classification",
                  library = "randomForest",
-                 loop = NULL)
+                 loop = NULL) # Problema de classificação
 
 customRF$parameters <- data.frame(parameter = c("mtry", "ntree"),
                                   class = rep("numeric", 2),
-                                  label = c("mtry", "ntree"))
+                                  label = c("mtry", "ntree")) # Utilizando os hiperparâmetros de variáveis por divisão e número de árvores
 
-customRF$grid <- function(x, y, len = NULL, search = "grid") {}
+customRF$grid <- function(x, y, len = NULL, search = "grid") {} # Grade de combinações
 
-customRF$fit <- function(x, y, wts, param, lev, last, weights, classProbs) {
+customRF$fit <- function(x, y, wts, param, lev, last, weights, classProbs) { # Hiperparâmetros para utilizar no treinamento
   randomForest(x, y,
                mtry = param$mtry,
                ntree = param$ntree)
 }
 
-customRF$predict <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+customRF$predict <- function(modelFit, newdata, preProc = NULL, submodels = NULL) # Previsões da classe final
   predict(modelFit, newdata)
 
-customRF$prob <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+customRF$prob <- function(modelFit, newdata, preProc = NULL, submodels = NULL) # Prob de cada classe
   predict(modelFit, newdata, type = "prob")
 
 customRF$sort <- function(x) x[order(x[,1]),]
@@ -298,16 +301,18 @@ customRF$levels <- function(x) x$classes
 # Validação-cruzada 10-fold
 ctrl <- trainControl(method = "cv",
                      number = 10,
-                     allowParallel = T)
+                     allowParallel = T,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary)
 
-grid <- expand.grid(.mtry = c(1:7),
-                    .ntree = c(500, 1000, 1500))
+grid <- expand.grid(.mtry = c(3:10),
+                    .ntree = c(250, 500, 1000))
 
 rfFit <- train(form_rf,
                method = customRF,
                tuneGrid = grid,
                trControl = ctrl,
-               metric = "Accuracy",
+               metric = "ROC",
                data = treino)
 rfFit
 plot(rfFit)
@@ -326,10 +331,10 @@ legend("topright", colnames(rf$err.rate),
        cex = 0.8,
        fill = 1:3)
 
-# MeanDecreaseAccuracy: permutação
+# MeanDecreaseAccuracy: importância por permutação
 importance(rf, type = 1)
 
-# MeanDecreaseGini: diminuição total nas impurezas do nó
+# MeanDecreaseGini: importância por diminuição total nas impurezas do nó
 importance(rf, type = 2)
 
 varImpPlot(rf, sort = T)
