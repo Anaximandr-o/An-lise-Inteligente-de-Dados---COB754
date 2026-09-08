@@ -67,19 +67,6 @@ matriz <- confusionMatrix(
 
 matriz
 
-# Métricas
-sensibilidade <- matriz$byClass["Sensitivity"]
-especificidade <- matriz$byClass["Specificity"]
-precisao <- matriz$byClass["Pos Pred Value"]
-f1 <- matriz$byClass["F1"]
-acuracia_balanceada <- matriz$byClass["Balanced Accuracy"]
-
-sensibilidade
-especificidade
-precisao
-f1
-acuracia_balanceada
-
 # ROC e AUC
 roc_teste <- roc(
   teste$CAR_CAT,
@@ -87,6 +74,7 @@ roc_teste <- roc(
   levels = c("Eletiva", "Urgencia"),
   quiet = TRUE
 )
+
 
 # Encontrar o melhor ponto de corte baseado no Índice de Youden (maximiza Sensibilidade + Especificidade)
 melhor_corte <- coords(
@@ -129,12 +117,6 @@ auc_teste
 ci_auc <- ci.auc(roc_teste)
 ci_auc
 
-# Curva ROC
-plot(
-  roc_teste,
-  main = "Curva ROC - Regressão Logística"
-)
-
 # Gráfico
 library(ggplot2)
 library(pROC)
@@ -168,97 +150,6 @@ ggroc(roc_teste, linewidth = 1.2) +
     y = "Sensibilidade"
   ) +
   theme_minimal(base_size = 13)
-
-# Odds Ratios (OR) com IC95% e p-valor
-tabela_OR <- tbl_regression(
-  modelo$finalModel,
-  exponentiate = TRUE
-)
-
-tabela_OR
-
-# ============================================================
-# KNN - comparação com a regressão logística
-# ============================================================
-
-# KNN
-set.seed(100)
-
-modelo_knn <- train(
-  CAR_CAT ~ IDADE + SEXO + RACA_COR +
-    mesmo_municipio + munResNome_Agrupado +
-    Hospital_Agrupado + ESPEC + DIAG_PRINC,
-  data = treino,
-  method = "knn",
-  metric = "ROC",
-  trControl = controle_cv,
-  preProcess = c("center", "scale"),
-  tuneLength = 10
-)
-
-modelo_knn
-
-
-# Probabilidades previstas no teste
-prob_knn <- predict(
-  modelo_knn,
-  newdata = teste,
-  type = "prob"
-)[, "Urgencia"]
-
-
-# Classe prevista com ponto de corte 0,50
-classe_knn <- ifelse(
-  prob_knn >= 0.50,
-  "Urgencia",
-  "Eletiva"
-)
-
-classe_knn <- factor(
-  classe_knn,
-  levels = c("Eletiva", "Urgencia")
-)
-
-
-# Matriz de confusão
-matriz_knn <- confusionMatrix(
-  classe_knn,
-  teste$CAR_CAT,
-  positive = "Urgencia"
-)
-
-matriz_knn
-
-
-# Métricas
-sensibilidade_knn <- matriz_knn$byClass["Sensitivity"]
-especificidade_knn <- matriz_knn$byClass["Specificity"]
-precisao_knn <- matriz_knn$byClass["Pos Pred Value"]
-f1_knn <- matriz_knn$byClass["F1"]
-acuracia_balanceada_knn <- matriz_knn$byClass["Balanced Accuracy"]
-
-sensibilidade_knn
-especificidade_knn
-precisao_knn
-f1_knn
-acuracia_balanceada_knn
-
-
-# ROC e AUC
-roc_knn <- roc(
-  teste$CAR_CAT,
-  prob_knn,
-  levels = c("Eletiva", "Urgencia"),
-  quiet = TRUE
-)
-
-auc_knn <- auc(roc_knn)
-auc_knn
-
-
-# IC95% da AUC
-ci_auc_knn <- ci.auc(roc_knn)
-ci_auc_knn
 
 # ============================================================
 # Random Forest
