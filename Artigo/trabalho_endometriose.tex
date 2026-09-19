@@ -1,0 +1,792 @@
+\documentclass[12pt,a4paper]{article}
+
+% ===================== Codificação e idioma =====================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+
+% ===================== Layout =====================
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{parskip}
+\setlength{\parskip}{0.5em}
+\usepackage{amsmath}
+
+% ===================== Tabelas e figuras =====================
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{threeparttable}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% ===================== Código-fonte =====================
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codekw}{rgb}{0.0,0.0,0.6}
+\definecolor{codecomment}{rgb}{0.4,0.4,0.4}
+\definecolor{codestring}{rgb}{0.0,0.4,0.3}
+
+\lstdefinestyle{Rstyle}{
+  language=R,
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestring},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=8pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  showstringspaces=false,
+  frame=single,
+  tabsize=2,
+  columns=fullflexible,
+  keepspaces=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {à}{{\`a}}1 {ã}{{\~a}}1 {õ}{{\~o}}1 {Ã}{{\~A}}1 {Õ}{{\~O}}1
+    {ê}{{\^e}}1 {â}{{\^a}}1 {ô}{{\^o}}1 {Ê}{{\^E}}1 {Â}{{\^A}}1 {Ô}{{\^O}}1
+    {ç}{{\c c}}1 {Ç}{{\c C}}1 {ü}{{\"u}}1
+}
+
+% ===================== Links e metadados =====================
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue,
+  pdftitle={Regressao Logistica versus Random Forest na Predicao do Carater de Internacao Hospitalar por Endometriose no Estado do Rio de Janeiro},
+  pdfauthor={Antonio Ferreira de Castro Barbosa}
+}
+
+% ===================== Nomes em português =====================
+\renewcommand{\refname}{Referências}
+\renewcommand{\tablename}{Tabela}
+\renewcommand{\figurename}{Figura}
+\renewcommand{\abstractname}{Resumo}
+
+\title{\textbf{Regressão Logística versus Random Forest na Predição do Caráter de Internação Hospitalar por Endometriose no Estado do Rio de Janeiro}}
+
+\author{
+Antonio Ferreira de Castro Barbosa \\[2pt]
+\small Universidade Federal do Estado do Rio de Janeiro (UNIRIO) \\
+\small Curso de Sistemas de Informação \\
+\small Disciplina: Análise Inteligente de Dados (COB754)
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+A endometriose é uma doença ginecológica crônica que afeta entre 5\% e 10\% das mulheres em idade reprodutiva no mundo, estando frequentemente associada a atrasos diagnósticos de vários anos e à necessidade de tratamento cirúrgico. No Sistema Único de Saúde (SUS), cada internação hospitalar é registrada com um caráter de atendimento -- eletivo ou de urgência -- que reflete a via de acesso da paciente ao hospital. Este trabalho comparou dois algoritmos de classificação supervisionada, Regressão Logística e Random Forest, na predição do caráter da internação em casos de endometriose registrados no estado do Rio de Janeiro ($N=4.409$), a partir de variáveis sociodemográficas e administrativas do Sistema de Informações Hospitalares do SUS (SIH/SUS). Após análise exploratória, tratamento de variáveis categóricas de alta cardinalidade e validação cruzada de 10 partições para ajuste de hiperparâmetros, os dois modelos apresentaram capacidade discriminativa semelhante (AUC de 0,84 e 0,83, respectivamente). Após o ajuste do ponto de corte de decisão a partir da curva ROC, a Regressão Logística obteve o melhor equilíbrio entre sensibilidade e especificidade (0,75 e 0,80; Kappa $=0,505$), enquanto o Random Forest priorizou a sensibilidade para a identificação de internações de urgência (0,88), ao custo de acurácia e especificidade mais baixas. Os resultados sugerem que fatores relacionados ao hospital e ao diagnóstico têm maior peso preditivo do que variáveis puramente demográficas, e que a escolha entre os dois modelos deve ser orientada pelo objetivo prático da aplicação.
+
+\vspace{4pt}
+\noindent\textbf{Palavras-chave:} Endometriose; Aprendizado de máquina; Regressão logística; Random Forest; SIH/SUS.
+\end{abstract}
+
+% =====================================================================
+\section{Introdução}
+% =====================================================================
+
+A endometriose é uma doença ginecológica crônica caracterizada pela presença de tecido semelhante ao endométrio fora da cavidade uterina, o que provoca um processo inflamatório crônico e a formação de tecido cicatricial \cite{who2025}. A condição pode se manifestar desde a menarca até a menopausa, causando dor pélvica crônica, dismenorreia, dispareunia e infertilidade, além de comprometer significativamente a qualidade de vida e a saúde mental das pessoas afetadas \cite{who2025}. Estimativas da Organização Mundial da Saúde indicam que a endometriose afeta aproximadamente 10\% das mulheres e meninas em idade reprodutiva em todo o mundo \cite{who2025}, sendo hoje reconhecida como um problema de saúde pública global, ainda marcado por sub-diagnóstico e desigualdades de acesso ao cuidado.
+
+Um dos aspectos mais discutidos na literatura sobre endometriose é o atraso diagnóstico: estudos internacionais recentes estimam intervalos médios que variam de aproximadamente 5 a 10 anos entre o início dos sintomas e o diagnóstico definitivo, a depender do país e do sistema de saúde considerado \cite{ellis2024}. Esse atraso tem implicações diretas sobre a forma como as pacientes chegam ao sistema hospitalar: uma internação pode ocorrer de maneira \emph{eletiva}, programada a partir de um encaminhamento ambulatorial prévio, ou de \emph{caráter urgente}, quando o atendimento se inicia diretamente por meio de pronto atendimento, transferência de outra unidade ou regulação (Central de Regulação/SAMU) \cite{sihsus_rj}. No âmbito do Sistema Único de Saúde (SUS), essa distinção é registrada em cada Autorização de Internação Hospitalar (AIH) processada pelo Sistema de Informações Hospitalares do SUS (SIH/SUS), gerido pelo Departamento de Informática do SUS (DATASUS) \cite{datasus_sih}, constituindo uma fonte administrativa rica -- ainda que indireta -- para o estudo de padrões de acesso e utilização dos serviços de saúde.
+
+Compreender quais fatores sociodemográficos e assistenciais estão associados ao caráter da internação por endometriose é relevante tanto do ponto de vista clínico -- internações de urgência podem sinalizar diagnóstico tardio, complicações ou dificuldade de acesso a tratamento eletivo -- quanto do ponto de vista do planejamento em saúde, ao evidenciar hospitais, regiões ou perfis de pacientes potencialmente associados a um acesso menos oportuno ao cuidado. Nesse contexto, algoritmos de aprendizado de máquina supervisionado vêm sendo cada vez mais utilizados como ferramentas de análise preditiva em saúde pública no Brasil, frequentemente comparando modelos lineares clássicos, como a Regressão Logística, a modelos de conjunto (\textit{ensemble}) mais flexíveis, como o Random Forest, sobre bases de dados administrativas do SUS \cite{santos2019}.
+
+Este trabalho tem foco metodológico na comparação de dois algoritmos de classificação supervisionada -- Regressão Logística \cite{hosmer2013} e Random Forest \cite{breiman2001} -- aplicados à predição do caráter de internação (eletiva ou de urgência) em casos de endometriose registrados no SIH/SUS do estado do Rio de Janeiro. Além do treinamento e da comparação de desempenho dos dois modelos, são discutidos aspectos de análise exploratória dos dados, tratamento de variáveis categóricas de alta cardinalidade, seleção de variáveis e a escolha do ponto de corte de decisão como estratégia para lidar com o desbalanceamento moderado da variável resposta.
+
+% =====================================================================
+\section{Objetivos}
+% =====================================================================
+
+\subsection*{Objetivo geral}
+
+Comparar o desempenho preditivo de dois algoritmos de classificação supervisionada -- Regressão Logística e Random Forest -- na predição do caráter da internação hospitalar (eletiva ou de urgência) em casos de endometriose registrados no SIH/SUS do estado do Rio de Janeiro, a partir de variáveis sociodemográficas e administrativas disponíveis na base de dados.
+
+\subsection*{Objetivos específicos}
+
+\begin{itemize}
+  \item Realizar a análise exploratória e descritiva da base de dados, com ênfase na distribuição da variável resposta (caráter da internação);
+  \item Tratar variáveis categóricas de alta cardinalidade (município de residência e hospital de internação), agrupando categorias pouco frequentes;
+  \item Selecionar as variáveis preditoras utilizadas em cada modelo, com apoio na importância de variáveis estimada pelo Random Forest;
+  \item Treinar os modelos de Regressão Logística e Random Forest com validação cruzada de 10 partições (\textit{10-fold cross-validation}) para ajuste de hiperparâmetros;
+  \item Avaliar e comparar os modelos por meio de métricas de classificação (acurácia, sensibilidade, especificidade, coeficiente Kappa e área sob a curva ROC), inclusive após o ajuste do ponto de corte de decisão a partir da curva ROC;
+  \item Discutir as implicações práticas das diferenças de desempenho entre os dois algoritmos para a identificação de internações de caráter urgente.
+\end{itemize}
+
+% =====================================================================
+\section{Metodologia}
+% =====================================================================
+
+\subsection{Fonte e caracterização dos dados}
+
+Os dados utilizados neste trabalho foram extraídos do Sistema de Informações Hospitalares do SUS (SIH/SUS), mantido pelo DATASUS/Ministério da Saúde a partir das Autorizações de Internação Hospitalar (AIH) preenchidas pelos hospitais após a alta e consolidadas nacionalmente \cite{datasus_sih}. Foram selecionadas internações com diagnóstico principal relacionado à endometriose (CID-10 N80--N80.9) ocorridas em hospitais do estado do Rio de Janeiro, totalizando $N = 4.409$ registros.
+
+A variável resposta, \texttt{CAR\_CAT}, corresponde ao caráter de atendimento registrado na AIH, categorizado pelo SIH/SUS como \emph{Eletivo} ou \emph{Urgência} \cite{sihsus_rj}. Operacionalmente, internações eletivas originam-se de uma consulta ambulatorial prévia, na qual o profissional assistente emite o laudo de solicitação, ao passo que internações de urgência iniciam-se por atendimento direto na unidade, por transferência de outro serviço ou por regulação \cite{sihsus_rj}.
+
+Como preditores, foram utilizadas variáveis sociodemográficas da paciente (idade, sexo, raça/cor, número de filhos) e variáveis administrativas/assistenciais da internação (município de residência, indicador de tratamento no mesmo município de residência, hospital, especialidade do leito, complexidade do procedimento -- média ou alta -- e diagnóstico principal), todas nativas do SIH/SUS \cite{datasus_sih,sihsus_rj}.
+
+\subsection{Análise exploratória e descritiva}
+\label{sec:analise_descritiva}
+
+A variável resposta apresentou distribuição desbalanceada entre as duas categorias: 3.142 internações eletivas (71,3\%) e 1.267 internações de urgência (28,7\%) (Figura~\ref{fig:dist_resposta}). Esse desbalanceamento é compatível com o padrão esperado para uma condição cujo tratamento definitivo mais comum é a cirurgia eletiva, ainda que uma parcela relevante -- quase 3 em cada 10 casos -- tenha sido internada em caráter de urgência.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=28pt,
+    width=9.5cm,height=6.5cm,
+    symbolic x coords={Eletiva,Urgência},
+    xtick=data,
+    ymin=0, ymax=3600,
+    ylabel={Número de internações},
+    nodes near coords,
+    every node near coord/.append style={font=\small},
+    enlarge x limits=0.5,
+    axis lines*=left,
+    /pgf/number format/.cd, 1000 sep={},
+    ]
+\addplot[fill=teal!70] coordinates {(Eletiva,3142) (Urgência,1267)};
+\end{axis}
+\end{tikzpicture}
+\caption{Distribuição do caráter de internação por endometriose -- Estado do Rio de Janeiro ($N=4.409$).}
+\label{fig:dist_resposta}
+\end{figure}
+
+As variáveis preditoras de natureza administrativa -- em especial hospital de internação e município de residência -- apresentaram elevada cardinalidade (dezenas a centenas de categorias distintas), o que motivou o tratamento descrito na Seção~\ref{sec:tratamento_variaveis}. As demais variáveis (idade, sexo, raça/cor, número de filhos, especialidade, complexidade e diagnóstico principal) foram verificadas quanto à distribuição de categorias e à presença de valores ausentes antes da modelagem -- não foram identificados valores ausentes em nenhuma das 15 variáveis da base --, seguindo prática usual de preparação de dados administrativos de saúde para aprendizado de máquina \cite{santos2019}.
+
+A Tabela~\ref{tab:descritivas} resume as principais características sociodemográficas e assistenciais da amostra.
+
+\begin{table}[H]
+\centering
+\caption{Características descritivas da amostra (N = 4.409).}
+\label{tab:descritivas}
+\begin{tabular}{p{5.8cm}p{7.2cm}}
+\toprule
+\textbf{Idade (anos)} & Média 45,7 (DP 11,4); mediana 45; mín.--máx.: 0--87 \\
+\addlinespace
+\textbf{Sexo} & Feminino: 4.390 (99,6\%); Masculino: 19 (0,4\%)$^{\text{a}}$ \\
+\addlinespace
+\textbf{Raça/cor} & Parda: 49,4\%; Branca: 25,7\%; Preta: 13,2\%; Ignorada: 9,7\%; Amarela: 1,9\% \\
+\addlinespace
+\textbf{Tratamento no mesmo município de residência} & Sim: 3.398 (77,1\%); Não: 1.011 (22,9\%) \\
+\addlinespace
+\textbf{Especialidade (\texttt{ESPEC})} & Cirurgia: 96,1\%; Clínica médica: 3,5\%; Outras (pediatria, obstetrícia, hospital-dia): 0,4\% \\
+\addlinespace
+\textbf{Complexidade (\texttt{COMPLEX})} & Média complexidade: 99,8\%; Alta complexidade: 0,2\% \\
+\addlinespace
+\textbf{Número de filhos (\texttt{NUM\_FILHOS})} & Igual a 0 em 99,95\% dos registros (apenas 2 de 4.409 com valor 2) \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+\footnotesize $^{\text{a}}$ Os 19 registros com sexo declarado como masculino distribuem-se entre diferentes subtipos diagnósticos e entre os dois desfechos, sem padrão específico, sendo mais provável que reflitam inconsistências de preenchimento do SIH/SUS do que uma subpopulação clínica distinta -- limitação já esperada em bases administrativas dessa natureza.
+\end{table}
+
+A idade das pacientes não diferiu de forma expressiva entre os dois grupos de desfecho (média de 45,8 anos nas internações eletivas contra 45,2 nas de urgência), ao passo que o tratamento fora do município de residência foi proporcionalmente mais frequente entre as internações de urgência (28,5\% contra 20,7\% nas eletivas) -- padrão compatível com a hipótese de que casos urgentes envolvem, com maior frequência, deslocamento para hospitais fora do município de origem. Já as variáveis \texttt{COMPLEX} e \texttt{NUM\_FILHOS} apresentaram variância praticamente nula, com mais de 99\% dos registros concentrados em uma única categoria -- o que é diretamente compatível com sua baixa importância relativa no modelo Random Forest (Seção~\ref{sec:resultados_rf}), já que variáveis quase constantes têm pouca capacidade de discriminar entre as classes.
+
+\subsection{Tratamento e seleção de variáveis}
+\label{sec:tratamento_variaveis}
+
+Duas das variáveis administrativas disponíveis possuíam número de categorias incompatível com a implementação de referência do Random Forest em R (pacote \texttt{randomForest}), que não admite preditores categóricos com mais de 53 níveis \cite{liaw2002}: o hospital de internação, identificado pelo código CNES (117 categorias distintas na base), e o município de residência (92 categorias distintas). Por esse motivo, o hospital foi agrupado na variável \texttt{Hospital\_Agrupado}, mantendo individualizados os oito hospitais mais frequentes e reunindo os demais em uma categoria residual (\emph{Outros Hospitais}), totalizando 9 categorias. Já o município de residência foi agrupado por região do estado na variável \texttt{munResNome\_Agrupado} -- Capital, Baixada Fluminense, Leste Fluminense, Norte/Noroeste Fluminense, Interior (Outras Regiões) e Outros Estados --, totalizando 6 categorias. Em ambos os casos o agrupamento reduz a esparsidade e a instabilidade das estimativas em categorias com poucas observações; no caso do município, a opção por um agrupamento regional (em vez de puramente por frequência) também preserva um significado geográfico interpretável para a variável.
+
+A variável de diagnóstico principal (\texttt{DIAG\_PRINC}) manteve a granularidade original dos subcódigos CID-10 de endometriose, concentrando-se principalmente em \emph{endometriose do útero} (N80.0; 36,0\% dos registros), \emph{outra endometriose} (N80.8; 30,0\%), \emph{endometriose do ovário} (N80.1; 13,5\%) e \emph{endometriose não especificada} (N80.9; 10,8\%), com os demais subtipos (tuba, intestino, septo retovaginal, peritônio pélvico, cicatriz cutânea) somando os 9,6\% restantes.
+
+A seleção de variáveis para cada modelo baseou-se em critérios teóricos (relevância clínica e assistencial) combinados à importância de variáveis estimada pelo próprio Random Forest (Seção~\ref{sec:resultados_rf}), que funcionou tanto como ferramenta de modelagem quanto como instrumento auxiliar de seleção e interpretação de variáveis. O modelo de Regressão Logística utilizou oito preditores -- \texttt{IDADE}, \texttt{SEXO}, \texttt{RACA\_COR}, \texttt{mesmo\_municipio}, \texttt{munResNome\_Agrupado}, \texttt{Hospital\_Agrupado}, \texttt{ESPEC} e \texttt{DIAG\_PRINC} --, ao passo que o Random Forest incorporou adicionalmente as variáveis \texttt{NUM\_FILHOS} (número de filhos) e \texttt{COMPLEX} (complexidade do procedimento), totalizando dez preditores. Essa diferença reflete a maior tolerância do Random Forest a um número maior de preditores com potencial redundância ou relações não lineares, em comparação à Regressão Logística, na qual a inclusão de variáveis adicionais de baixa relevância tende a penalizar mais diretamente a parcimônia e a interpretabilidade do modelo -- o que se mostrou pertinente a posteriori, já que \texttt{NUM\_FILHOS} e \texttt{COMPLEX} apresentaram variância quase nula (Seção~\ref{sec:analise_descritiva}) e, de fato, figuraram entre as variáveis de menor importância no modelo Random Forest.
+
+\subsection{Divisão treino-teste e desbalanceamento de classes}
+
+A base de dados foi dividida em conjuntos de treino (70\%, $n=3.085$) e teste (30\%, $n=1.324$) por meio de amostragem aleatória estratificada pela variável resposta (\texttt{CAR\_CAT}), utilizando a função \texttt{initial\_split()} do pacote \texttt{rsample} \cite{rsample2024}, com semente aleatória fixada (\texttt{set.seed(100)}) para garantir a reprodutibilidade. A estratificação assegura que as proporções de internações eletivas e de urgência no conjunto de teste (943 e 381 casos, respectivamente) permaneçam próximas às observadas na base completa.
+
+Quanto ao desbalanceamento das classes, optou-se por \emph{não} aplicar técnicas de reamostragem (como sobreamostragem da classe minoritária ou subamostragem da classe majoritária), uma vez que a proporção observada (aproximadamente 71\%/29\%) foi considerada um desbalanceamento moderado, e não severo -- cenário em que a literatura recomenda cautela redobrada com reamostragem, sob risco de sobreajuste ou distorção artificial da distribuição original dos dados. Como alternativa, o desbalanceamento foi tratado por meio do ajuste do ponto de corte (\textit{threshold}) de decisão a partir da curva ROC (Seção~\ref{sec:corte}), estratégia que permite calibrar a sensibilidade e a especificidade do classificador sem alterar a distribuição dos dados de treino.
+
+\subsection{Regressão Logística}
+
+O primeiro algoritmo utilizado foi a Regressão Logística binária \cite{hosmer2013}, que modela a probabilidade de a internação ser de urgência por meio de uma combinação linear dos preditores transformada pela função logística (\textit{link} logit). O modelo foi ajustado com a função \texttt{train()} do pacote \texttt{caret} \cite{kuhn2008}, especificando \texttt{method = "glm"}, \texttt{family = binomial} e \texttt{metric = "ROC"}, com validação cruzada de 10 partições (\texttt{trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)}).
+
+Nessa configuração padrão do \texttt{caret}, a classe positiva de referência para o cálculo de sensibilidade e especificidade durante a validação cruzada corresponde, por padrão, ao primeiro nível do fator da variável resposta -- no caso, \emph{Eletiva} --, podendo ser alterada pelo usuário \cite{kuhn2008}. Sob essa convenção, o modelo obteve, nas reamostragens de validação cruzada e no limiar de decisão padrão (0,50), ROC médio de 0,809, sensibilidade de 0,880 e especificidade de 0,443 (Tabela~\ref{tab:glm_cv}). Como o objetivo analítico deste trabalho é identificar corretamente as internações de \emph{urgência}, as métricas de sensibilidade e especificidade reportadas na avaliação final do modelo (Seção~\ref{sec:resultados}) foram recalculadas considerando \emph{Urgência} como classe positiva de interesse.
+
+\begin{table}[H]
+\centering
+\caption{Resultado da validação cruzada (10 partições) -- Regressão Logística, limiar padrão (0,50), classe de referência \emph{Eletiva}.}
+\label{tab:glm_cv}
+\begin{tabular}{lccc}
+\toprule
+Amostras (treino) & ROC médio & Sensibilidade & Especificidade \\
+\midrule
+3.085 & 0,809 & 0,880 & 0,443 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Random Forest}
+
+O segundo algoritmo foi o Random Forest \cite{breiman2001,liaw2002}, um método de \textit{ensemble} baseado na agregação de múltiplas árvores de decisão treinadas sobre amostras \textit{bootstrap} dos dados, com seleção aleatória de um subconjunto de variáveis a cada divisão de nó -- estratégia que reduz a correlação entre as árvores e a variância do modelo final. Antes do treinamento, a variável resposta do conjunto de treino foi releveada (\texttt{relevel(CAR\_CAT, ref = "Urgencia")}), de modo que \emph{Urgência} passasse a ser o nível de referência tanto na validação cruzada quanto na avaliação final do Random Forest -- diferentemente da Regressão Logística, cujo treinamento manteve a referência padrão (\emph{Eletiva}), sendo a troca de classe de interesse aplicada apenas na avaliação final (Seção~\ref{sec:corte}).
+
+Diferentemente da Regressão Logística, o Random Forest possui dois hiperparâmetros centrais: \texttt{mtry} (número de variáveis sorteadas a cada divisão) e \texttt{ntree} (número de árvores da floresta). Como a implementação padrão do método \texttt{"rf"} no \texttt{caret} permite ajustar apenas \texttt{mtry} por meio da grade de sintonia (\texttt{tuneGrid}), tratando \texttt{ntree} como parâmetro fixo, foi definido um modelo customizado (\texttt{customRF}) no \texttt{caret} -- técnica documentada para estender os modelos nativos do pacote \cite{kuhn2008} -- permitindo a busca em grade simultânea sobre os dois hiperparâmetros.
+
+A grade de sintonia avaliada foi \texttt{mtry} $\in \{3,4,5,6,7,8,9,10\}$ e \texttt{ntree} $\in \{250, 500, 1000\}$, totalizando 24 combinações, cada uma avaliada por validação cruzada de 10 partições com a métrica ROC (\texttt{trainControl(method = "cv", number = 10, allowParallel = TRUE, classProbs = TRUE, summaryFunction = twoClassSummary)}). O ROC médio em validação cruzada cresceu com o aumento de \texttt{mtry}, estabilizando-se em torno de 0,82 a partir de \texttt{mtry} próximo de 8, de forma semelhante para as três quantidades de árvores testadas; a combinação com maior ROC médio foi \texttt{mtry = 9} e \texttt{ntree = 1000}. Selecionada essa combinação por meio do \texttt{caret}, o modelo final foi reajustado diretamente com a função \texttt{randomForest()} do pacote homônimo, utilizando os valores ótimos de \texttt{mtry} e \texttt{ntree}, o que permitiu o acesso direto às funcionalidades nativas do pacote para diagnóstico do modelo -- em particular o erro \textit{out-of-bag} por número de árvores e a importância de variáveis por permutação e por impureza de Gini, discutidas a seguir.
+
+Após o treinamento do modelo final, a taxa de erro \textit{out-of-bag} (OOB) estabilizou-se a partir de aproximadamente 200--300 árvores, situando-se globalmente próxima de 0,25. As taxas de erro específicas por classe, no entanto, evidenciaram padrão bastante distinto entre si sob a regra de decisão padrão (voto majoritário a 0,50): a classe minoritária (Urgência) apresentou erro OOB sensivelmente mais alto (próximo de 0,47) do que a classe majoritária (Eletiva, próximo de 0,16) -- reflexo esperado do desbalanceamento da variável resposta e da tendência do Random Forest de favorecer a classe majoritária quando nenhuma correção adicional é aplicada.
+
+A importância das variáveis foi estimada pelas métricas \textit{MeanDecreaseAccuracy} e \textit{MeanDecreaseGini} (Tabela~\ref{tab:importancia}, Seção~\ref{sec:resultados_rf}). Em ambas as métricas, as variáveis \texttt{Hospital\_Agrupado} e \texttt{DIAG\_PRINC} figuraram entre as mais relevantes, à frente de variáveis puramente demográficas como \texttt{SEXO} e \texttt{RACA\_COR}, sugerindo que fatores institucionais e clínicos têm maior peso preditivo do que características sociodemográficas isoladas na determinação do caráter da internação.
+
+A Tabela~\ref{tab:hiperparametros} resume os principais parâmetros e hiperparâmetros utilizados nos dois modelos.
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros e hiperparâmetros utilizados nos modelos.}
+\label{tab:hiperparametros}
+\begin{tabular}{p{6.3cm}p{7.2cm}}
+\toprule
+\multicolumn{2}{l}{\textbf{Configuração geral}} \\
+\midrule
+Proporção treino / teste & 70\% / 30\% (estratificada por \texttt{CAR\_CAT}) \\
+Semente aleatória (\texttt{set.seed}) & 100 \\
+Validação cruzada & 10 partições (\textit{10-fold}) \\
+Métrica de otimização & ROC \\
+\addlinespace
+\multicolumn{2}{l}{\textbf{Regressão Logística}} \\
+\midrule
+Método (\texttt{caret}) & \texttt{glm}, \texttt{family = binomial} \\
+Número de preditores & 8 \\
+Ponto de corte ajustado (via curva ROC) & 0,34 \\
+\addlinespace
+\multicolumn{2}{l}{\textbf{Random Forest}} \\
+\midrule
+Número de preditores & 10 \\
+Grade de \texttt{mtry} testada & 3, 4, 5, 6, 7, 8, 9, 10 \\
+Grade de \texttt{ntree} testada & 250, 500, 1000 \\
+\texttt{mtry} selecionado & 9 \\
+\texttt{ntree} selecionado & 1000 \\
+Ponto de corte ajustado (via curva ROC) & 0,12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Avaliação dos modelos e escolha do ponto de corte}
+\label{sec:corte}
+
+Em problemas de classificação binária com classes desbalanceadas, o uso do limiar de decisão padrão (probabilidade estimada $\geq 0,50$) tende a favorecer a classe majoritária, resultando em alta especificidade e baixa sensibilidade para a classe minoritária -- padrão observado inicialmente para a Regressão Logística (sensibilidade de 0,470 e especificidade de 0,894 no conjunto de teste, sob o limiar padrão; Seção~\ref{sec:resultados}). Para mitigar esse efeito sem recorrer a técnicas de reamostragem, a curva ROC de cada modelo foi construída sobre as probabilidades previstas no conjunto de teste com o pacote \texttt{pROC} \cite{proc2011}, e o ponto de corte ótimo foi obtido pela função \texttt{coords(roc, x = "best", best.method = "youden")}, que maximiza o índice de Youden $J = \text{sensibilidade} + \text{especificidade} - 1$ \cite{youden1950} -- critério equivalente ao ponto da curva ROC mais distante da diagonal de referência (classificador aleatório), e que pondera igualmente os dois tipos de erro \cite{fawcett2006}. O intervalo de confiança de 95\% da AUC de cada modelo também foi estimado por \textit{bootstrap} estratificado (\texttt{ci.auc()}, pacote \texttt{pROC}) \cite{proc2011}.
+
+Os pontos de corte adotados foram $0,34$ para a Regressão Logística (AUC $=0,841$) e $0,12$ para o Random Forest (AUC $=0,832$). O ponto de corte substancialmente mais baixo obtido para o Random Forest é consistente com a tendência desse algoritmo, sob dados desbalanceados, de produzir probabilidades estimadas sistematicamente mais conservadoras para a classe minoritária no voto agregado das árvores.
+
+Os modelos finais foram avaliados no conjunto de teste (mantido fora de todo o processo de treinamento e de sintonia de hiperparâmetros) por meio de matriz de confusão, acurácia com intervalo de confiança de 95\%, taxa de acerto sem informação (\textit{No Information Rate}), coeficiente Kappa de Cohen, teste de McNemar, sensibilidade, especificidade e área sob a curva ROC (AUC) \cite{fawcett2006}. A classe \emph{Urgência} foi considerada a classe positiva de interesse nessa avaliação final (\texttt{confusionMatrix(..., positive = "Urgencia")}), e a concordância observada foi interpretada segundo a escala de Landis e Koch, na qual valores de Kappa entre 0,00 e 0,20 indicam concordância \emph{ligeira}, entre 0,21 e 0,40 concordância \emph{razoável}, entre 0,41 e 0,60 concordância \emph{moderada}, entre 0,61 e 0,80 concordância \emph{substancial}, e acima de 0,80 concordância \emph{quase perfeita} \cite{landis1977}.
+
+% =====================================================================
+\section{Resultados}
+\label{sec:resultados}
+% =====================================================================
+
+\subsection{Regressão Logística}
+
+A Tabela~\ref{tab:glm_default} apresenta a matriz de confusão e as métricas de desempenho da Regressão Logística no conjunto de teste, sob o limiar de decisão padrão (0,50). Observa-se sensibilidade baixa (0,470) para a identificação de internações de urgência, acompanhada de especificidade elevada (0,894) para internações eletivas -- reflexo do desbalanceamento de classes discutido na Seção~\ref{sec:corte}.
+
+\begin{table}[H]
+\centering
+\caption{Regressão Logística -- matriz de confusão e métricas no conjunto de teste, limiar padrão (0,50).}
+\label{tab:glm_default}
+\begin{tabular}{llcc}
+\toprule
+& & \multicolumn{2}{c}{Referência} \\
+\cmidrule(lr){3-4}
+& & Eletiva & Urgência \\
+\midrule
+\multirow{2}{*}{Predição} & Eletiva & 843 & 202 \\
+& Urgência & 100 & 179 \\
+\bottomrule
+\end{tabular}
+\hspace{1.2cm}
+\begin{tabular}{lc}
+\toprule
+Métrica & Valor \\
+\midrule
+Acurácia (IC 95\%) & 0,772 (0,748--0,794) \\
+NIR & 0,712 \\
+Kappa & 0,395 \\
+Sensibilidade (Urgência) & 0,470 \\
+Especificidade (Eletiva) & 0,894 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Após o ajuste do ponto de corte para 0,34 a partir da curva ROC (AUC $=0,841$), o desempenho tornou-se consideravelmente mais equilibrado (Tabela~\ref{tab:glm_ajustado}): a sensibilidade aumentou de 0,470 para 0,748, com redução moderada da especificidade, de 0,894 para 0,795. A acurácia global também apresentou pequena melhora (de 0,772 para 0,782), e o coeficiente Kappa aumentou de 0,395 para 0,505 -- passando de concordância \emph{razoável} para \emph{moderada}, segundo a escala de Landis e Koch \cite{landis1977}.
+
+\begin{table}[H]
+\centering
+\caption{Regressão Logística -- matriz de confusão e métricas no conjunto de teste, ponto de corte ajustado (0,34).}
+\label{tab:glm_ajustado}
+\begin{tabular}{llcc}
+\toprule
+& & \multicolumn{2}{c}{Referência} \\
+\cmidrule(lr){3-4}
+& & Eletiva & Urgência \\
+\midrule
+\multirow{2}{*}{Predição} & Eletiva & 750 & 96 \\
+& Urgência & 193 & 285 \\
+\bottomrule
+\end{tabular}
+\hspace{1.2cm}
+\begin{tabular}{lc}
+\toprule
+Métrica & Valor \\
+\midrule
+Acurácia (IC 95\%) & 0,782 (0,759--0,804) \\
+NIR & 0,712 \\
+Kappa & 0,505 \\
+Sensibilidade (Urgência) & 0,748 \\
+Especificidade (Eletiva) & 0,795 \\
+AUC & 0,841 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Random Forest}
+\label{sec:resultados_rf}
+
+Para o Random Forest, a combinação de hiperparâmetros selecionada por validação cruzada foi \texttt{mtry = 9} e \texttt{ntree = 1000}. A Tabela~\ref{tab:importancia} apresenta a ordenação das dez variáveis preditoras segundo as métricas \textit{MeanDecreaseAccuracy} e \textit{MeanDecreaseGini}.
+
+\begin{table}[H]
+\centering
+\caption{Importância das variáveis no modelo Random Forest.}
+\label{tab:importancia}
+\begin{tabular}{clcl}
+\toprule
+Posição & MeanDecreaseAccuracy & Posição & MeanDecreaseGini \\
+\midrule
+1º & \texttt{Hospital\_Agrupado} & 1º & \texttt{IDADE} \\
+2º & \texttt{DIAG\_PRINC} & 2º & \texttt{Hospital\_Agrupado} \\
+3º & \texttt{ESPEC} & 3º & \texttt{DIAG\_PRINC} \\
+4º & \texttt{munResNome\_Agrupado} & 4º & \texttt{RACA\_COR} \\
+5º & \texttt{IDADE} & 5º & \texttt{munResNome\_Agrupado} \\
+6º & \texttt{mesmo\_municipio} & 6º & \texttt{mesmo\_municipio} \\
+7º & \texttt{RACA\_COR} & 7º & \texttt{ESPEC} \\
+8º & \texttt{NUM\_FILHOS} & 8º & \texttt{SEXO} \\
+9º & \texttt{COMPLEX} & 9º & \texttt{NUM\_FILHOS} \\
+10º & \texttt{SEXO} & 10º & \texttt{COMPLEX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Com o ponto de corte de 0,12, definido a partir da curva ROC (AUC $=0,832$), o modelo apresentou sensibilidade de 0,885 para internações de urgência -- a mais alta entre os dois modelos --, mas especificidade de apenas 0,642 e acurácia de 0,712 (Tabela~\ref{tab:rf_resultado}), estatisticamente indistinguível da taxa de acerto sem informação ($NIR=0,712$; $p=0,538$). Ainda assim, o coeficiente Kappa (0,428) indicou concordância \emph{moderada}, evidenciando que a acurácia bruta, isoladamente, subestima a capacidade do modelo em um cenário de classes desbalanceadas.
+
+\begin{table}[H]
+\centering
+\caption{Random Forest -- matriz de confusão e métricas no conjunto de teste, ponto de corte ajustado (0,12).}
+\label{tab:rf_resultado}
+\begin{tabular}{llcc}
+\toprule
+& & \multicolumn{2}{c}{Referência} \\
+\cmidrule(lr){3-4}
+& & Eletiva & Urgência \\
+\midrule
+\multirow{2}{*}{Predição} & Eletiva & 605 & 44 \\
+& Urgência & 338 & 337 \\
+\bottomrule
+\end{tabular}
+\hspace{1.2cm}
+\begin{tabular}{lc}
+\toprule
+Métrica & Valor \\
+\midrule
+Acurácia (IC 95\%) & 0,712 (0,686--0,736) \\
+NIR & 0,712 ($p=0,538$) \\
+Kappa & 0,428 \\
+Sensibilidade (Urgência) & 0,885 \\
+Especificidade (Eletiva) & 0,642 \\
+AUC & 0,832 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparação entre os modelos}
+
+A Tabela~\ref{tab:comparacao} e a Figura~\ref{fig:comparacao_grafico} resumem o desempenho dos dois modelos, já considerando os respectivos pontos de corte ajustados. Os modelos apresentaram capacidade discriminativa semelhante, com AUC de 0,84 para a Regressão Logística e 0,83 para o Random Forest, mas trade-offs distintos entre sensibilidade e especificidade: a Regressão Logística ofereceu o melhor equilíbrio geral (maior Kappa e maior acurácia), enquanto o Random Forest priorizou a identificação de internações de urgência, ao custo de mais falsos positivos (menor especificidade) e de uma acurácia global não superior à da regra trivial de prever sempre a classe majoritária.
+
+\begin{table}[H]
+\centering
+\caption{Comparação final entre os modelos, após ajuste do ponto de corte.}
+\label{tab:comparacao}
+\begin{tabular}{lccccc}
+\toprule
+Modelo & Acurácia & IC 95\% & Sensibilidade & Especificidade & AUC \\
+\midrule
+Regressão Logística & 0,78 & 0,76--0,80 & 0,75 & 0,80 & 0,84 \\
+Random Forest & 0,71 & 0,69--0,74 & 0,88 & 0,64 & 0,83 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=14pt,
+    width=13cm,height=7cm,
+    symbolic x coords={Acurácia,Sensibilidade,Especificidade,AUC},
+    xtick=data,
+    xticklabel style={font=\small},
+    ymin=0, ymax=1,
+    ylabel={Valor},
+    legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1},
+    enlarge x limits=0.15,
+    ]
+\addplot coordinates {(Acurácia,0.78) (Sensibilidade,0.75) (Especificidade,0.80) (AUC,0.84)};
+\addplot coordinates {(Acurácia,0.71) (Sensibilidade,0.88) (Especificidade,0.64) (AUC,0.83)};
+\legend{Regressão Logística, Random Forest}
+\end{axis}
+\end{tikzpicture}
+\caption{Comparação das métricas finais entre os modelos, após ajuste do ponto de corte.}
+\label{fig:comparacao_grafico}
+\end{figure}
+
+% =====================================================================
+\section{Conclusão}
+% =====================================================================
+
+Os resultados deste trabalho indicam que tanto a Regressão Logística quanto o Random Forest apresentam capacidade discriminativa semelhante e satisfatória (AUC de 0,84 e 0,83, respectivamente) para distinguir internações eletivas de internações de urgência em casos de endometriose no estado do Rio de Janeiro. A escolha entre os dois modelos, contudo, não deve se basear apenas na acurácia global ou na AUC, mas no objetivo prático da aplicação -- questão que remete diretamente à reflexão que motivou a conclusão da análise original: \emph{priorizar a identificação correta de um desfecho específico ou obter um desempenho mais equilibrado entre os desfechos?}
+
+Quando o objetivo é obter um classificador equilibrado, com boa relação entre sensibilidade e especificidade e a melhor concordância geral com os dados observados, a Regressão Logística com ponto de corte ajustado (0,34) mostrou-se a alternativa mais adequada, alcançando o maior coeficiente Kappa (0,505) e a maior AUC (0,841) entre os dois modelos, além de manter razoável interpretabilidade dos coeficientes. Já quando o custo de \emph{não identificar} uma internação de urgência é considerado especialmente alto -- por exemplo, em aplicações de triagem ou alerta precoce, nas quais falsos positivos são mais toleráveis do que falsos negativos --, o Random Forest com ponto de corte mais conservador (0,12) constitui a opção mais adequada, ao custo de acurácia global e especificidade mais baixas, e estatisticamente equivalente à regra trivial de prever sempre a classe majoritária.
+
+Um resultado transversal aos dois modelos foi a maior importância preditiva de variáveis relacionadas ao hospital de internação, ao diagnóstico principal e à especialidade do leito, em comparação a variáveis puramente demográficas como sexo e raça/cor. Esse achado sugere que fatores institucionais e assistenciais -- possivelmente relacionados a diferenças de acesso a tratamento eletivo entre hospitais e regiões -- exercem papel mais relevante do que características individuais das pacientes na determinação do caráter da internação, hipótese que merece investigação mais aprofundada em trabalhos futuros.
+
+Como limitações, destacam-se: a natureza administrativa da base de dados, sujeita a práticas de registro e codificação do SIH/SUS; o tratamento do desbalanceamento moderado exclusivamente por meio do ajuste do ponto de corte, em vez de técnicas de reamostragem -- mais indicadas a casos de desbalanceamento severo, o que não é o caso aqui; e a restrição da análise a um único estado. Trabalhos futuros poderiam explorar técnicas de balanceamento de classes (como \textit{SMOTE}), algoritmos adicionais de classificação e a validação externa dos modelos em outras regiões ou períodos.
+
+% =====================================================================
+\begin{thebibliography}{99}
+% =====================================================================
+
+\bibitem{breiman2001} BREIMAN, L. Random forests. \textit{Machine Learning}, v. 45, n. 1, p. 5--32, 2001.
+
+\bibitem{datasus_sih} BRASIL. Ministério da Saúde. Departamento de Informática do SUS (DATASUS). \textit{Sistema de Informações Hospitalares do SUS (SIH/SUS)}. Disponível em: \url{http://tabnet.datasus.gov.br}. Acesso em: 18 set. 2026.
+
+\bibitem{ellis2024} ELLIS, K.; WOOD, R. A decade to wait: update on the average delay to diagnosis for endometriosis in Aotearoa New Zealand. \textit{Australian and New Zealand Journal of Obstetrics and Gynaecology}, 2024.
+
+\bibitem{fawcett2006} FAWCETT, T. An introduction to ROC analysis. \textit{Pattern Recognition Letters}, v. 27, n. 8, p. 861--874, 2006.
+
+\bibitem{rsample2024} FRICK, H.; CHOW, F.; KUHN, M.; MAHONEY, M.; SILGE, J.; WICKHAM, H. \textit{rsample: General Resampling Infrastructure}. R package version 1.2.1, 2024.
+
+\bibitem{hosmer2013} HOSMER, D. W.; LEMESHOW, S.; STURDIVANT, R. X. \textit{Applied Logistic Regression}. 3. ed. Hoboken: John Wiley \& Sons, 2013.
+
+\bibitem{kuhn2008} KUHN, M. Building predictive models in R using the caret package. \textit{Journal of Statistical Software}, v. 28, n. 5, p. 1--26, 2008.
+
+\bibitem{landis1977} LANDIS, J. R.; KOCH, G. G. The measurement of observer agreement for categorical data. \textit{Biometrics}, v. 33, n. 1, p. 159--174, 1977.
+
+\bibitem{liaw2002} LIAW, A.; WIENER, M. Classification and regression by randomForest. \textit{R News}, v. 2, n. 3, p. 18--22, 2002.
+
+\bibitem{proc2011} ROBIN, X.; TURCK, N.; HAINARD, A.; TIBERTI, N.; LISACEK, F.; SANCHEZ, J.-C.; MÜLLER, M. pROC: an open-source package for R and S+ to analyze and compare ROC curves. \textit{BMC Bioinformatics}, v. 12, p. 77, 2011.
+
+\bibitem{santos2019} SANTOS, H. G.; NASCIMENTO, C. F.; IZBICKI, R.; DUARTE, Y. A. O.; CHIAVEGATTO FILHO, A. D. P. Machine learning para análises preditivas em saúde: exemplo de aplicação para predizer óbito em idosos de São Paulo, Brasil. \textit{Cadernos de Saúde Pública}, v. 35, n. 7, e00050818, 2019.
+
+\bibitem{sihsus_rj} RIO DE JANEIRO (Estado). Secretaria de Estado de Saúde. \textit{Internações Hospitalares Efetuadas pelo SIH/SUS -- Notas Técnicas}. Disponível em: \url{https://sistemas.saude.rj.gov.br}. Acesso em: 18 set. 2026.
+
+\bibitem{youden1950} YOUDEN, W. J. Index for rating diagnostic tests. \textit{Cancer}, v. 3, n. 1, p. 32--35, 1950.
+
+\bibitem{who2025} WORLD HEALTH ORGANIZATION (WHO). \textit{Endometriosis}. Fact sheet, 2025. Disponível em: \url{https://www.who.int/news-room/fact-sheets/detail/endometriosis}. Acesso em: 18 set. 2026.
+
+\end{thebibliography}
+
+% =====================================================================
+\addtocounter{section}{1}
+\section{Anexo -- Script R Utilizado nas Análises}
+% =====================================================================
+
+\begin{lstlisting}[style=Rstyle, caption={Script R utilizado nas análises (\texttt{trabalhoEndometriose.R}).}]
+library(dplyr)
+library(gtsummary)
+library(pROC)
+library(rsample)
+library(caret)
+
+dados <- readRDS("dados_endometriose_limpos.rds")
+
+# Divisão treino/teste
+set.seed(100)
+divisao <- initial_split(
+  dados,
+  prop = 0.70,
+  strata = CAR_CAT
+)
+treino <- training(divisao)
+teste  <- testing(divisao)
+
+# Validação cruzada k-fold
+controle_cv <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+# Treinando o modelo de regressão logística
+modelo <- train(
+  CAR_CAT ~ IDADE + SEXO + RACA_COR +
+    mesmo_municipio + munResNome_Agrupado +
+    Hospital_Agrupado + ESPEC + DIAG_PRINC,
+  data = treino,
+  method = "glm",
+  family = binomial,
+  metric = "ROC",
+  trControl = controle_cv
+)
+
+modelo
+
+# Probs previstas no teste
+prob_teste <- predict(
+  modelo,
+  newdata = teste,
+  type = "prob"
+)[, "Urgencia"]
+
+# Classe prevista usando ponto de corte 0,5
+classe_teste <- ifelse(
+  prob_teste >= 0.50,
+  "Urgencia",
+  "Eletiva"
+)
+
+classe_teste <- factor(
+  classe_teste,
+  levels = c("Eletiva", "Urgencia")
+)
+
+# Matriz de confusão
+matriz <- confusionMatrix(
+  classe_teste,
+  teste$CAR_CAT,
+  positive = "Urgencia"
+)
+
+matriz
+
+# ROC e AUC
+roc_teste <- roc(
+  teste$CAR_CAT,
+  prob_teste,
+  levels = c("Eletiva", "Urgencia"),
+  quiet = TRUE
+)
+
+
+# Encontrar o melhor ponto de corte baseado no Índice de Youden (maximiza Sensibilidade + Especificidade)
+melhor_corte <- coords(
+  roc_teste, 
+  x = "best", 
+  best.method = "youden", 
+  ret = c("threshold", "specificity", "sensitivity")
+)
+
+print(melhor_corte)
+
+# Extrair apenas o valor numérico do threshold (caso retorne multiplos empates, pegamos o primeiro)
+corte_otimo <- as.numeric(melhor_corte$threshold[1])
+
+# Aplicar o novo ponto de corte nas probabilidades previstas
+classe_teste_otimizada <- ifelse(
+  prob_teste >= corte_otimo,
+  "Urgencia",
+  "Eletiva"
+)
+
+classe_teste_otimizada <- factor(
+  classe_teste_otimizada,
+  levels = c("Eletiva", "Urgencia")
+)
+
+# Gerar a nova matriz de confusão e conferir as métricas
+matriz_otimizada <- confusionMatrix(
+  classe_teste_otimizada,
+  teste$CAR_CAT,
+  positive = "Urgencia"
+)
+
+matriz_otimizada
+
+auc_teste <- auc(roc_teste)
+auc_teste
+
+# IC95% da AUC
+ci_auc <- ci.auc(roc_teste)
+ci_auc
+
+# Gráfico
+library(ggplot2)
+library(pROC)
+
+ggroc(roc_teste, linewidth = 1.2) +
+  geom_abline(
+    slope = 1,
+    intercept = 1, # Ajuste para 1 se estiver usando o eixo padrão do ggroc
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  # Adiciona o ponto de corte ótimo no gráfico
+  geom_point(
+    aes(x = melhor_corte$specificity[1], y = melhor_corte$sensitivity[1]),
+    color = "red", size = 4
+  ) +
+  annotate(
+    "text",
+    x = melhor_corte$specificity[1] - 0.05,
+    y = melhor_corte$sensitivity[1] - 0.05,
+    label = paste("Corte:", round(corte_otimo, 2)),
+    color = "red", size = 4
+  ) +
+  labs(
+    title = "Curva ROC - Regressão Logística",
+    subtitle = paste0(
+      "AUC = ",
+      round(as.numeric(auc_teste), 3)
+    ),
+    x = "Especificidade", 
+    y = "Sensibilidade"
+  ) +
+  theme_minimal(base_size = 13)
+
+# ============================================================
+# Random Forest
+# ============================================================
+library(randomForest)
+library(ggplot2)
+
+# Define "Urgencia" como a classe principal (nível 1)
+treino$CAR_CAT <- relevel(treino$CAR_CAT, ref = "Urgencia")
+
+form_rf <- CAR_CAT ~ IDADE + RACA_COR + NUM_FILHOS + SEXO + DIAG_PRINC +
+  ESPEC + COMPLEX + mesmo_municipio + Hospital_Agrupado + munResNome_Agrupado
+
+# Ajustar manualmente mtry e ntree
+customRF <- list(type = "Classification",
+                 library = "randomForest",
+                 loop = NULL) # Problema de classificação
+
+customRF$parameters <- data.frame(parameter = c("mtry", "ntree"),
+                                  class = rep("numeric", 2),
+                                  label = c("mtry", "ntree")) # Utilizando os hiperparâmetros de variáveis por divisão e número de árvores
+
+customRF$grid <- function(x, y, len = NULL, search = "grid") {} # Grade de combinações
+
+customRF$fit <- function(x, y, wts, param, lev, last, weights, classProbs) { # Hiperparâmetros para utilizar no treinamento
+  randomForest(x, y,
+               mtry = param$mtry,
+               ntree = param$ntree)
+}
+
+customRF$predict <- function(modelFit, newdata, preProc = NULL, submodels = NULL) # Previsões da classe final
+  predict(modelFit, newdata)
+
+customRF$prob <- function(modelFit, newdata, preProc = NULL, submodels = NULL) # Prob de cada classe
+  predict(modelFit, newdata, type = "prob")
+
+customRF$sort <- function(x) x[order(x[,1]),]
+customRF$levels <- function(x) x$classes
+
+# Validação-cruzada 10-fold
+ctrl <- trainControl(method = "cv",
+                     number = 10,
+                     allowParallel = T,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary)
+
+grid <- expand.grid(.mtry = c(3:10),
+                    .ntree = c(250, 500, 1000))
+
+rfFit <- train(form_rf,
+               method = customRF,
+               tuneGrid = grid,
+               trControl = ctrl,
+               metric = "ROC",
+               data = treino)
+rfFit
+plot(rfFit)
+
+### Modelo final e importância das variáveis ###
+
+rf <- randomForest(form_rf, data = treino,
+                   importance = T,
+                   mtry = rfFit$bestTune$mtry,
+                   ntree = rfFit$bestTune$ntree)
+rf
+
+plot(rf) # erro OOB
+legend("topright", colnames(rf$err.rate),
+       col = 1:3,
+       cex = 0.8,
+       fill = 1:3)
+
+# MeanDecreaseAccuracy: importância por permutação
+importance(rf, type = 1)
+
+# MeanDecreaseGini: importância por diminuição total nas impurezas do nó
+importance(rf, type = 2)
+
+varImpPlot(rf, sort = T)
+varUsed(rf, count = T)
+
+### Predições e desempenho ###
+
+predrf <- predict(rf, teste, type = "prob")
+
+roc_teste_rf <- roc(teste$CAR_CAT, predrf[, "Urgencia"])
+auc_teste_rf <- auc(roc_teste_rf)
+
+melhor_corte_rf <- coords(roc_teste_rf, "best",
+                          ret = c("threshold", "specificity", "sensitivity"))
+corte_otimo_rf <- melhor_corte_rf$threshold[1]
+
+resultrf <- as.factor(ifelse(predrf[, "Urgencia"] > corte_otimo_rf,
+                             "Urgencia", "Eletiva"))
+confusionMatrix(resultrf, teste$CAR_CAT, positive = "Urgencia")
+
+### Curva ROC ###
+
+ggroc(roc_teste_rf, linewidth = 1.2) +
+  geom_abline(
+    slope = 1, intercept = 1, # Ajuste para 1 se estiver usando o eixo padrão do ggroc
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  # Adiciona o ponto de corte ótimo no gráfico
+  geom_point(
+    aes(x = melhor_corte_rf$specificity[1], y = melhor_corte_rf$sensitivity[1]),
+    color = "red",
+    size = 4
+  ) +
+  annotate(
+    "text",
+    x = melhor_corte_rf$specificity[1] - 0.05,
+    y = melhor_corte_rf$sensitivity[1] - 0.05,
+    label = paste("Corte:", round(corte_otimo_rf, 2)),
+    color = "red",
+    size = 4
+  ) +
+  labs(
+    title = "Curva ROC - Random Forest",
+    subtitle = paste0(
+      "AUC = ", round(as.numeric(auc_teste_rf), 3)
+    ),
+    x = "Especificidade",
+    y = "Sensibilidade"
+  ) +
+  theme_minimal(base_size = 13)
+\end{lstlisting}
+
+\end{document}
