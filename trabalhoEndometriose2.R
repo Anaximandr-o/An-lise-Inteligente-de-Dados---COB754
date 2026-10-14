@@ -87,11 +87,10 @@ folds_cv <- createFolds(treino$CAR_CAT, k = 10)
 
 # Grade de hiperparâmetros
 grid_xgb <- expand.grid(
-  max_depth = c(3, 5, 7),
-  eta = c(0.01, 0.05, 0.1),
-  min_child_weight = c(1, 5),
-  subsample = 0.8,
-  colsample_bytree = 0.8
+  max_depth = c(4, 6, 8),
+  eta = c(0.01, 0.1, 1),
+  subsample = c(0.7, 0.8, 0.9),
+  colsample_bytree = c(0.7, 0.8, 0.9)
 )
 
 grid_xgb$nrounds <- NA_integer_
@@ -104,7 +103,6 @@ for (i in 1:nrow(grid_xgb)) {
       eval_metric = "auc",
       max_depth = grid_xgb$max_depth[i],
       eta = grid_xgb$eta[i],
-      min_child_weight = grid_xgb$min_child_weight[i],
       subsample = grid_xgb$subsample[i],
       colsample_bytree = grid_xgb$colsample_bytree[i],
       seed = 100
@@ -136,7 +134,6 @@ modelo_xgb <- xgb.train(
     eval_metric = "auc",
     max_depth = melhor_xgb$max_depth,
     eta = melhor_xgb$eta,
-    min_child_weight = melhor_xgb$min_child_weight,
     subsample = melhor_xgb$subsample,
     colsample_bytree = melhor_xgb$colsample_bytree,
     seed = 100
