@@ -224,3 +224,141 @@ ggroc(roc_teste_xgb, linewidth = 1.2) +
     y = "Sensibilidade"
   ) +
   theme_minimal(base_size = 13)
+
+
+
+
+# ============================================================
+# MLP (rede neural) com as variáveis confirmadas pelo Boruta
+# ============================================================
+library(nnet)
+
+### Preparação dos dados ###
+
+# A MLP é sensível à escala: padroniza (média 0, DP 1) só as variáveis
+# numéricas, usando a média e o DP do TREINO (também aplicados no teste).
+# As colunas one-hot (0/1) ficam como estão.
+vars_num <- vars_boruta[sapply(treino[, vars_boruta, drop = FALSE], is.numeric)] # Identifica variáveis numéricas
+medias   <- colMeans(x_treino[, vars_num, drop = FALSE])
+desvios  <- apply(x_treino[, vars_num, drop = FALSE], 2, sd)
+
+x_treino_mlp <- x_treino
+x_teste_mlp  <- x_teste
+x_treino_mlp[, vars_num] <- scale(x_treino[, vars_num, drop = FALSE], center = medias, scale = desvios) # Padronização dos dados utilizando média e desvio padrão
+x_teste_mlp[, vars_num]  <- scale(x_teste[, vars_num, drop = FALSE], center = medias, scale = desvios) # Padroniza treino e teste separadamente
+
+### Treinamento com validação cruzada ###
+
+# Mesmos 10 folds do XGBoost
+indices_treino <- lapply(folds_cv, function(f) setdiff(seq_len(nrow(treino)), f))
+
+controle_mlp <- trainControl(
+  method = "cv",
+  index = indices_treino,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+grid_mlp <- expand.grid(
+  size = c(5, 10, 15), # Qtd de neurônios na camada oculta
+  decay = c(0.01, 0.1, 1, 5) # Penalização dos pesos
+)
+
+set.seed(100)
+cv_mlp <- train(
+  x = x_treino_mlp,
+  y = treino$CAR_CAT,
+  method = "nnet",
+  metric = "ROC",
+  trControl = controle_mlp,
+  tuneGrid = grid_mlp,
+  maxit = 500,      # máximo de iterações do treinamento
+  MaxNWts = 10000,  # limite de pesos da rede
+  trace = FALSE
+)
+
+# Combinações ordenadas pela AUC da validação cruzada
+cv_mlp$results[order(-cv_mlp$results$ROC), ]
+
+melhor_mlp <- cv_mlp$bestTune
+melhor_mlp
+
+# Modelo final (o caret já treina de novo com todo o treino na melhor combinação)
+modelo_mlp <- cv_mlp$finalModel
+modelo_mlp
+
+### Predições e desempenho ###
+
+# Probs previstas no teste (probabilidade de Urgencia)
+prob_teste_mlp <- predict(cv_mlp, x_teste_mlp, type = "prob")[, "Urgencia"]
+
+# ROC e AUC
+roc_teste_mlp <- roc(
+  teste$CAR_CAT,
+  prob_teste_mlp,
+  levels = c("Eletiva", "Urgencia"),
+  quiet = TRUE
+)
+
+auc_teste_mlp <- auc(roc_teste_mlp)
+auc_teste_mlp
+
+# IC95% da AUC
+ci_auc_mlp <- ci.auc(roc_teste_mlp)
+ci_auc_mlp
+
+# Melhor ponto de corte (Índice de Youden)
+melhor_corte_mlp <- coords(
+  roc_teste_mlp,
+  x = "best",
+  best.method = "youden",
+  ret = c("threshold", "specificity", "sensitivity")
+)
+
+melhor_corte_mlp
+corte_otimo_mlp <- as.numeric(melhor_corte_mlp$threshold[1])
+
+classe_teste_mlp <- factor(
+  ifelse(prob_teste_mlp >= corte_otimo_mlp, "Urgencia", "Eletiva"),
+  levels = c("Eletiva", "Urgencia")
+)
+
+# Matriz de confusão
+confusionMatrix(
+  classe_teste_mlp,
+  teste$CAR_CAT,
+  positive = "Urgencia"
+)
+
+### Curva ROC ###
+
+ggroc(roc_teste_mlp, linewidth = 1.2) +
+  geom_abline(
+    slope = 1,
+    intercept = 1,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  # Adiciona o ponto de corte ótimo no gráfico
+  geom_point(
+    aes(x = melhor_corte_mlp$specificity[1], y = melhor_corte_mlp$sensitivity[1]),
+    color = "red",
+    size = 4
+  ) +
+  annotate(
+    "text",
+    x = melhor_corte_mlp$specificity[1] - 0.05,
+    y = melhor_corte_mlp$sensitivity[1] - 0.05,
+    label = paste("Corte:", round(corte_otimo_mlp, 2)),
+    color = "red",
+    size = 4
+  ) +
+  labs(
+    title = "Curva ROC - MLP",
+    subtitle = paste0(
+      "AUC = ", round(as.numeric(auc_teste_mlp), 3)
+    ),
+    x = "Especificidade",
+    y = "Sensibilidade"
+  ) +
+  theme_minimal(base_size = 13)
